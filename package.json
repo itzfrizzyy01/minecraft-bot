@@ -1,12 +1,14 @@
 {
   "name": "minecraft-bot",
   "version": "1.0.0",
-  "description": "Minecraft bot for Aternos server",
   "main": "index.js",
+  "type": "commonjs",
+  "dependencies": {
+    "mineflayer": "^4.20.0",
+    "mineflayer-pathfinder": "^2.4.0",
+    "minecraft-data": "^3.68.0"
+  },
   "scripts": {
     "start": "node index.js"
-  },
-  "dependencies": {
-    "mineflayer": "^4.16.0"
   }
 }
