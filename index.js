@@ -1,15 +1,23 @@
 const mineflayer = require("mineflayer");
 const { pathfinder, Movements, goals } = require("mineflayer-pathfinder");
-const { GoalNear } = goals;
+const { GoalNear, GoalBlock } = goals;
+const fs = require("fs");
 
 const botOptions = {
-  host: "server_ip",  // put your server IP
-  port: 25565,        // your server port
+  host: "1deadsteal.aternos.me", // put your server hostname
+  port: 44112,                   // your server port, remove line if 25565
   username: "lullu"
 };
 const PASSWORD = "12335554";
-
 let bot;
+
+// --- Logger ---
+const logStream = fs.createWriteStream("bot.log", { flags: "a" });
+function log(msg) {
+  logStream.write(`[${new Date().toISOString()}] ${msg}\n`);
+}
+process.on("uncaughtException", err => log(err.stack || err));
+process.on("unhandledRejection", err => log(err.stack || err));
 
 function createBot() {
   bot = mineflayer.createBot(botOptions);
@@ -35,8 +43,8 @@ function createBot() {
     bot.once("spawn", () => startWorker());
   });
 
-  bot.on("kicked", () => {
-    setTimeout(createBot, 5000);
+  bot.on("end", () => {
+    setTimeout(createBot, 5000); // auto-rejoin
   });
 
   bot.on("chat", (username, message) => {
@@ -46,6 +54,8 @@ function createBot() {
       bot.chat(replies[Math.floor(Math.random() * replies.length)]);
     }
   });
+
+  bot.on("error", err => log(err.message));
 }
 
 function startWorker() {
@@ -57,7 +67,7 @@ function startWorker() {
     );
 
     if (hostile && bot.health > 8) {
-      try { await bot.pvp.attack(hostile); } catch {}
+      try { await bot.pvp.attack(hostile); } catch (err) { log(err); }
       return;
     }
 
@@ -73,21 +83,21 @@ function startWorker() {
       return;
     }
 
-    const log = bot.findBlock({ matching: b => b && b.name.includes("log"), maxDistance: 10 });
-    if (log) {
+    const logBlock = bot.findBlock({ matching: b => b && b.name.includes("log"), maxDistance: 10 });
+    if (logBlock) {
       try {
-        await bot.pathfinder.goto(new goals.GoalBlock(log.position.x, log.position.y, log.position.z));
-        await bot.dig(log);
-      } catch {}
+        await bot.pathfinder.goto(new GoalBlock(logBlock.position.x, logBlock.position.y, logBlock.position.z));
+        await bot.dig(logBlock);
+      } catch (err) { log(err); }
       return;
     }
 
     const stone = bot.findBlock({ matching: b => b && b.name.includes("stone"), maxDistance: 10 });
     if (stone) {
       try {
-        await bot.pathfinder.goto(new goals.GoalBlock(stone.position.x, stone.position.y, stone.position.z));
+        await bot.pathfinder.goto(new GoalBlock(stone.position.x, stone.position.y, stone.position.z));
         await bot.dig(stone);
-      } catch {}
+      } catch (err) { log(err); }
       return;
     }
 
@@ -100,7 +110,7 @@ function startWorker() {
         Math.floor(bot.entity.position.z + dz),
         1
       ));
-    } catch {}
+    } catch (err) { log(err); }
   }, 8000);
 }
 
