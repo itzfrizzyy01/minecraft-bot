@@ -1,233 +1,107 @@
-// index.js
-const { execSync } = require("child_process");
-
-// Auto-install required packages if missing
-try {
-  require.resolve("mineflayer");
-  require.resolve("mineflayer-pathfinder");
-  require.resolve("minecraft-data");
-} catch (e) {
-  execSync("npm install mineflayer mineflayer-pathfinder minecraft-data", { stdio: "inherit" });
-}
-
 const mineflayer = require("mineflayer");
 const { pathfinder, Movements, goals } = require("mineflayer-pathfinder");
-const mcDataLoader = require("minecraft-data");
+const { GoalNear } = goals;
 
-const PASSWORD = "12335554"; // your AuthMe password
+const botOptions = {
+  host: "server_ip",  // put your server IP
+  port: 25565,        // your server port
+  username: "lullu"
+};
+const PASSWORD = "12335554";
 
-// ---- Tunables ----
-const EXPLORE_RADIUS = 32;
-const EXPLORE_PAUSE_MS = 1500;
-const HOSTILE_DETECT_RADIUS = 12;
-const FLEE_DISTANCE = 14;
-const ITEM_SCAN_RADIUS = 8;
-// ------------------
+let bot;
 
 function createBot() {
-  const bot = mineflayer.createBot({
-    host: "1deadsteal.aternos.me",
-    port: 44112,
-    username: "lully",          // <-- Bot name
-    version: "1.20.4"
-  });
-
+  bot = mineflayer.createBot(botOptions);
   bot.loadPlugin(pathfinder);
 
-  let mcData;
-  let movements;
-  let exploring = false;
-  let fleeing = false;
-  let registered = false;
-  let loggedIn = false;
+  bot.once("spawn", () => {
+    const mcData = require("minecraft-data")(bot.version);
+    bot.pathfinder.setMovements(new Movements(bot, mcData));
+  });
 
-  // --- AuthMe chat detection ---
-  bot.on("message", (msg) => {
-    const text = msg.toString();
-
-    if (/register/i.test(text) && !registered) {
+  bot.on("message", msg => {
+    const text = msg.toString().toLowerCase();
+    if (text.includes("isn't registered")) {
       setTimeout(() => bot.chat(`/register ${PASSWORD} ${PASSWORD}`), 2000);
-      registered = true;
-    }
-
-    if (/login/i.test(text) && !loggedIn) {
+    } else if (text.includes("login")) {
       setTimeout(() => bot.chat(`/login ${PASSWORD}`), 2000);
-      loggedIn = true;
-    }
-
-    if (/isn't registered/i.test(text)) {
-      registered = false;
-      setTimeout(() => bot.chat(`/register ${PASSWORD} ${PASSWORD}`), 2000);
-      registered = true;
+    } else if (text.includes("logged in")) {
+      startWorker();
     }
   });
 
-  bot.on("spawn", () => {
-    mcData = mcDataLoader(bot.version);
-    movements = new Movements(bot, mcData);
-
-    movements.canDig = true;
-    movements.allow1by1towers = true;
-    movements.allowParkour = true;
-    movements.allowSprinting = true;
-    movements.scaffoldingBlocks = new Set([
-      mcData.itemsByName?.dirt?.id,
-      mcData.itemsByName?.cobblestone?.id,
-      mcData.itemsByName?.netherrack?.id,
-      mcData.itemsByName?.sand?.id,
-      mcData.itemsByName?.gravel?.id
-    ].filter(Boolean));
-
-    bot.pathfinder.setMovements(movements);
-
-    setTimeout(() => {
-      startHostileWatcher();
-      startItemCollector();
-      startExploreLoop();
-    }, 4000);
+  bot.on("death", () => {
+    bot.once("spawn", () => startWorker());
   });
 
-  // --- Exploring ---
-  function startExploreLoop() {
-    if (exploring) return;
-    exploring = true;
+  bot.on("kicked", () => {
+    setTimeout(createBot, 5000);
+  });
 
-    const baseY = Math.floor(bot.entity.position.y);
-
-    const step = async () => {
-      if (!bot.entity || fleeing) return setTimeout(step, 1000);
-
-      const dx = (Math.random() * 2 - 1) * EXPLORE_RADIUS;
-      const dz = (Math.random() * 2 - 1) * EXPLORE_RADIUS;
-      const target = bot.entity.position.offset(dx, 0, dz);
-
-      const goal = new goals.GoalNear(
-        Math.floor(target.x),
-        baseY,
-        Math.floor(target.z),
-        1
-      );
-
-      try { await bot.pathfinder.goto(goal); } catch {}
-      finally { setTimeout(step, EXPLORE_PAUSE_MS); }
-    };
-
-    step();
-  }
-
-  // --- Hostile avoidance ---
-  function startHostileWatcher() {
-    const HOSTILES = new Set([
-      "Zombie","Husk","Drowned","Skeleton","Stray","Creeper","Spider","Cave Spider",
-      "Enderman","Witch","Vindicator","Evoker","Pillager","Ravager","Guardian",
-      "Elder Guardian","Slime","Magma Cube","Phantom","Hoglin","Zoglin","Piglin Brute",
-      "Wither Skeleton","Blaze","Ghast","Silverfish"
-    ]);
-
-    setInterval(async () => {
-      if (!bot.entity) return;
-
-      let nearest = null;
-      let bestDist = Infinity;
-      for (const e of Object.values(bot.entities)) {
-        if (!e || e.type !== "mob" || !e.mobType) continue;
-        if (!HOSTILES.has(e.mobType)) continue;
-        const dist = bot.entity.position.distanceTo(e.position);
-        if (dist < bestDist && dist <= HOSTILE_DETECT_RADIUS) {
-          bestDist = dist;
-          nearest = e;
-        }
-      }
-
-      if (nearest) {
-        fleeing = true;
-        try {
-          const away = bot.entity.position.minus(nearest.position).scaled(1);
-          if (away.distanceTo({ x: 0, y: 0, z: 0 }) < 0.001) {
-            away.x = (Math.random() - 0.5);
-            away.z = (Math.random() - 0.5);
-          }
-          const norm = Math.sqrt(away.x * away.x + away.z * away.z) || 1;
-          away.x /= norm; away.z /= norm;
-
-          const fleeTarget = bot.entity.position.offset(
-            away.x * FLEE_DISTANCE,
-            0,
-            away.z * FLEE_DISTANCE
-          );
-
-          const g = new goals.GoalNear(
-            Math.floor(fleeTarget.x),
-            Math.floor(bot.entity.position.y),
-            Math.floor(fleeTarget.z),
-            2
-          );
-          await bot.pathfinder.goto(g);
-        } catch {} finally { fleeing = false; }
-      }
-    }, 800);
-  }
-
-  // --- Item collection ---
-  function startItemCollector() {
-    setInterval(async () => {
-      if (!bot.entity || fleeing) return;
-
-      const items = Object.values(bot.entities).filter(e => {
-        if (!e) return false;
-        if (e.type !== "object") return false;
-        const dist = bot.entity.position.distanceTo(e.position);
-        return dist <= ITEM_SCAN_RADIUS;
-      });
-
-      if (items.length === 0) return;
-
-      items.sort((a, b) =>
-        bot.entity.position.distanceTo(a.position) - bot.entity.position.distanceTo(b.position)
-      );
-      const target = items[0];
-
-      try {
-        const g = new goals.GoalBlock(
-          Math.floor(target.position.x),
-          Math.floor(target.position.y),
-          Math.floor(target.position.z)
-        );
-        await bot.pathfinder.goto(g);
-      } catch {}
-    }, 1500);
-  }
-
-  // --- Chat replies ---
-  const responses = ["hello bro", "yo what's up", "hey there", "sup"]; 
   bot.on("chat", (username, message) => {
     if (username === bot.username) return;
-    if (/hello|hi|hey/i.test(message)) {
-      const reply = responses[Math.floor(Math.random() * responses.length)];
-      bot.chat(reply);
+    const replies = ["hello bro", "yo!", "sup?", "hey friend"];
+    if (message.toLowerCase().includes("hello")) {
+      bot.chat(replies[Math.floor(Math.random() * replies.length)]);
     }
   });
+}
 
-  // Respawn after death
-  bot.on("death", () => {
-    setTimeout(() => bot.chat("/respawn"), 2000);
-  });
+function startWorker() {
+  setInterval(async () => {
+    if (!bot.entity) return;
 
-  // Reconnect if kicked
-  bot.on("end", () => setTimeout(createBot, 5000));
-  bot.on("kicked", () => {});
-  bot.on("error", () => {});
+    const hostile = bot.nearestEntity(e =>
+      e.type === "mob" && ["Zombie", "Skeleton", "Creeper", "Spider"].includes(e.name)
+    );
 
-  setInterval(() => {
-    if (bot.player) bot.chat("/me exploring...");
-  }, 60_000);
+    if (hostile && bot.health > 8) {
+      try { await bot.pvp.attack(hostile); } catch {}
+      return;
+    }
+
+    if (bot.health <= 6 && hostile) {
+      const dx = Math.random() * 10 - 5;
+      const dz = Math.random() * 10 - 5;
+      bot.pathfinder.setGoal(new GoalNear(
+        bot.entity.position.x + dx,
+        bot.entity.position.y,
+        bot.entity.position.z + dz,
+        1
+      ), true);
+      return;
+    }
+
+    const log = bot.findBlock({ matching: b => b && b.name.includes("log"), maxDistance: 10 });
+    if (log) {
+      try {
+        await bot.pathfinder.goto(new goals.GoalBlock(log.position.x, log.position.y, log.position.z));
+        await bot.dig(log);
+      } catch {}
+      return;
+    }
+
+    const stone = bot.findBlock({ matching: b => b && b.name.includes("stone"), maxDistance: 10 });
+    if (stone) {
+      try {
+        await bot.pathfinder.goto(new goals.GoalBlock(stone.position.x, stone.position.y, stone.position.z));
+        await bot.dig(stone);
+      } catch {}
+      return;
+    }
+
+    const dx = Math.random() * 20 - 10;
+    const dz = Math.random() * 20 - 10;
+    try {
+      await bot.pathfinder.goto(new GoalNear(
+        Math.floor(bot.entity.position.x + dx),
+        Math.floor(bot.entity.position.y),
+        Math.floor(bot.entity.position.z + dz),
+        1
+      ));
+    } catch {}
+  }, 8000);
 }
 
 createBot();
-
-// --- Tiny web server for Render/keepalive ---
-const http = require("http");
-http.createServer((req, res) => {
-  res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("Bot is running\n");
-}).listen(process.env.PORT || 3000);
