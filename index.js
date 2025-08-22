@@ -14,7 +14,7 @@ const { pathfinder, Movements, goals } = require("mineflayer-pathfinder");
 const mcDataLoader = require("minecraft-data");
 
 let didRegister = false; // track if /register has been done
-const PASSWORD = "12857546565656"; // your password
+const PASSWORD = "123456789"; // your password
 
 function createBot() {
   const bot = mineflayer.createBot({
@@ -47,3 +47,4 @@ http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
   res.end("Bot is running\n");
 }).listen(process.env.PORT || 3000);
+
