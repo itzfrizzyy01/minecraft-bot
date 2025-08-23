@@ -1,117 +1,124 @@
-const mineflayer = require("mineflayer");
-const { pathfinder, Movements, goals } = require("mineflayer-pathfinder");
-const { GoalNear, GoalBlock } = goals;
-const fs = require("fs");
+const mineflayer = require("mineflayer")
+const { pathfinder, Movements, goals } = require("mineflayer-pathfinder")
+const { plugin: pvp } = require("mineflayer-pvp")
+const autoeat = require("mineflayer-auto-eat").plugin
+const collectBlock = require("mineflayer-collectblock").plugin
+const toolPlugin = require("mineflayer-tool").plugin
+const mcDataLoader = require("minecraft-data")
 
-const botOptions = {
-  host: "1deadsteal.aternos.me", // put your server hostname
-  port: 44112,                   // your server port, remove line if 25565
-  username: "lullu"
-};
-const PASSWORD = "12335554";
-let bot;
-
-// --- Logger ---
-const logStream = fs.createWriteStream("bot.log", { flags: "a" });
-function log(msg) {
-  logStream.write(`[${new Date().toISOString()}] ${msg}\n`);
-}
-process.on("uncaughtException", err => log(err.stack || err));
-process.on("unhandledRejection", err => log(err.stack || err));
+const PASSWORD = "2211133445"
+let firstJoin = true
 
 function createBot() {
-  bot = mineflayer.createBot(botOptions);
-  bot.loadPlugin(pathfinder);
+  const bot = mineflayer.createBot({
+    host: "1deadsteal.aternos.me",
+    port: 44112,
+    username: "mr_troller",
+    version: "1.20.4"
+  })
+
+  bot.loadPlugin(pathfinder)
+  bot.loadPlugin(pvp)
+  bot.loadPlugin(autoeat)
+  bot.loadPlugin(collectBlock)
+  bot.loadPlugin(toolPlugin)
 
   bot.once("spawn", () => {
-    const mcData = require("minecraft-data")(bot.version);
-    bot.pathfinder.setMovements(new Movements(bot, mcData));
-  });
+    console.log("[BOT] Spawned")
 
-  bot.on("message", msg => {
-    const text = msg.toString().toLowerCase();
-    if (text.includes("isn't registered")) {
-      setTimeout(() => bot.chat(`/register ${PASSWORD} ${PASSWORD}`), 2000);
-    } else if (text.includes("login")) {
-      setTimeout(() => bot.chat(`/login ${PASSWORD}`), 2000);
-    } else if (text.includes("logged in")) {
-      startWorker();
+    // Register/login
+    if (firstJoin) {
+      setTimeout(() => bot.chat(`/register ${PASSWORD} ${PASSWORD}`), 2000)
+      firstJoin = false
+    } else {
+      setTimeout(() => bot.chat(`/login ${PASSWORD}`), 2000)
     }
-  });
 
+    // Setup auto-eat (to stay alive)
+    bot.autoeat.options = {
+      priority: "foodPoints",
+      startAt: 14,
+      bannedFood: []
+    }
+
+    // Start exploring after login
+    setTimeout(() => exploreLoop(bot), 5000)
+  })
+
+  // Respawn if dead
   bot.on("death", () => {
-    bot.once("spawn", () => startWorker());
-  });
+    console.log("[BOT] Died, respawning in 5s")
+    setTimeout(() => bot.chat("/respawn"), 5000)
+  })
+
+  // Reconnect if kicked
+  bot.on("kicked", (reason) => {
+    console.log("[BOT] Kicked:", reason)
+    setTimeout(createBot, 5000)
+  })
 
   bot.on("end", () => {
-    setTimeout(createBot, 5000); // auto-rejoin
-  });
+    console.log("[BOT] Disconnected, retrying...")
+    setTimeout(createBot, 5000)
+  })
 
-  bot.on("chat", (username, message) => {
-    if (username === bot.username) return;
-    const replies = ["hello bro", "yo!", "sup?", "hey friend"];
-    if (message.toLowerCase().includes("hello")) {
-      bot.chat(replies[Math.floor(Math.random() * replies.length)]);
-    }
-  });
+  bot.on("error", (err) => {
+    console.log("[BOT] Error:", err.message)
+  })
 
-  bot.on("error", err => log(err.message));
-}
-
-function startWorker() {
-  setInterval(async () => {
-    if (!bot.entity) return;
-
+  // Fight hostile mobs automatically
+  bot.on("physicTick", () => {
     const hostile = bot.nearestEntity(e =>
-      e.type === "mob" && ["Zombie", "Skeleton", "Creeper", "Spider"].includes(e.name)
-    );
-
-    if (hostile && bot.health > 8) {
-      try { await bot.pvp.attack(hostile); } catch (err) { log(err); }
-      return;
+      e.type === "mob" &&
+      ["Zombie", "Skeleton", "Spider", "Creeper"].includes(e.name)
+    )
+    if (hostile) {
+      // If low HP, run instead of fight
+      if (bot.health <= 6) {
+        runAway(bot, hostile)
+      } else {
+        bot.pvp.attack(hostile)
+      }
     }
-
-    if (bot.health <= 6 && hostile) {
-      const dx = Math.random() * 10 - 5;
-      const dz = Math.random() * 10 - 5;
-      bot.pathfinder.setGoal(new GoalNear(
-        bot.entity.position.x + dx,
-        bot.entity.position.y,
-        bot.entity.position.z + dz,
-        1
-      ), true);
-      return;
-    }
-
-    const logBlock = bot.findBlock({ matching: b => b && b.name.includes("log"), maxDistance: 10 });
-    if (logBlock) {
-      try {
-        await bot.pathfinder.goto(new GoalBlock(logBlock.position.x, logBlock.position.y, logBlock.position.z));
-        await bot.dig(logBlock);
-      } catch (err) { log(err); }
-      return;
-    }
-
-    const stone = bot.findBlock({ matching: b => b && b.name.includes("stone"), maxDistance: 10 });
-    if (stone) {
-      try {
-        await bot.pathfinder.goto(new GoalBlock(stone.position.x, stone.position.y, stone.position.z));
-        await bot.dig(stone);
-      } catch (err) { log(err); }
-      return;
-    }
-
-    const dx = Math.random() * 20 - 10;
-    const dz = Math.random() * 20 - 10;
-    try {
-      await bot.pathfinder.goto(new GoalNear(
-        Math.floor(bot.entity.position.x + dx),
-        Math.floor(bot.entity.position.y),
-        Math.floor(bot.entity.position.z + dz),
-        1
-      ));
-    } catch (err) { log(err); }
-  }, 8000);
+  })
 }
 
-createBot();
+function exploreLoop(bot) {
+  const mcData = mcDataLoader(bot.version)
+  const movements = new Movements(bot, mcData)
+  bot.pathfinder.setMovements(movements)
+
+  async function loop() {
+    try {
+      // Pick random position nearby to walk to
+      const x = bot.entity.position.x + Math.floor(Math.random() * 20 - 10)
+      const z = bot.entity.position.z + Math.floor(Math.random() * 20 - 10)
+      const y = bot.entity.position.y
+
+      await bot.pathfinder.goto(new goals.GoalBlock(x, y, z))
+      setTimeout(loop, 3000)
+    } catch {
+      setTimeout(loop, 5000)
+    }
+  }
+
+  loop()
+}
+
+function runAway(bot, enemy) {
+  const pos = bot.entity.position
+  const awayX = pos.x + (pos.x - enemy.position.x) * 5
+  const awayZ = pos.z + (pos.z - enemy.position.z) * 5
+  const y = pos.y
+  bot.pathfinder.goto(new goals.GoalBlock(awayX, y, awayZ))
+}
+
+createBot()
+
+// Tiny web server for Render
+const http = require("http")
+http.createServer((req, res) => {
+  res.writeHead(200, { "Content-Type": "text/plain" })
+  res.end("Survival Bot is running\n")
+}).listen(process.env.PORT || 3000)
+
