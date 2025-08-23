@@ -1,3 +1,4 @@
+// index.js
 const mineflayer = require("mineflayer")
 const { pathfinder, Movements, goals } = require("mineflayer-pathfinder")
 const { plugin: pvp } = require("mineflayer-pvp")
@@ -24,9 +25,6 @@ function createBot() {
   bot.loadPlugin(toolPlugin)
 
   bot.once("spawn", () => {
-    console.log("[BOT] Spawned")
-
-    // Register/login
     if (firstJoin) {
       setTimeout(() => bot.chat(`/register ${PASSWORD} ${PASSWORD}`), 2000)
       firstJoin = false
@@ -34,46 +32,35 @@ function createBot() {
       setTimeout(() => bot.chat(`/login ${PASSWORD}`), 2000)
     }
 
-    // Setup auto-eat (to stay alive)
     bot.autoeat.options = {
       priority: "foodPoints",
       startAt: 14,
       bannedFood: []
     }
 
-    // Start exploring after login
     setTimeout(() => exploreLoop(bot), 5000)
   })
 
-  // Respawn if dead
   bot.on("death", () => {
-    console.log("[BOT] Died, respawning in 5s")
     setTimeout(() => bot.chat("/respawn"), 5000)
   })
 
-  // Reconnect if kicked
-  bot.on("kicked", (reason) => {
-    console.log("[BOT] Kicked:", reason)
+  bot.on("kicked", () => {
     setTimeout(createBot, 5000)
   })
 
   bot.on("end", () => {
-    console.log("[BOT] Disconnected, retrying...")
     setTimeout(createBot, 5000)
   })
 
-  bot.on("error", (err) => {
-    console.log("[BOT] Error:", err.message)
-  })
+  bot.on("error", () => {})
 
-  // Fight hostile mobs automatically
   bot.on("physicTick", () => {
     const hostile = bot.nearestEntity(e =>
       e.type === "mob" &&
       ["Zombie", "Skeleton", "Spider", "Creeper"].includes(e.name)
     )
     if (hostile) {
-      // If low HP, run instead of fight
       if (bot.health <= 6) {
         runAway(bot, hostile)
       } else {
@@ -90,7 +77,6 @@ function exploreLoop(bot) {
 
   async function loop() {
     try {
-      // Pick random position nearby to walk to
       const x = bot.entity.position.x + Math.floor(Math.random() * 20 - 10)
       const z = bot.entity.position.z + Math.floor(Math.random() * 20 - 10)
       const y = bot.entity.position.y
@@ -115,10 +101,9 @@ function runAway(bot, enemy) {
 
 createBot()
 
-// Tiny web server for Render
+// --- Tiny web server for Render ---
 const http = require("http")
 http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" })
   res.end("Survival Bot is running\n")
 }).listen(process.env.PORT || 3000)
-
