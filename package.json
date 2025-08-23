@@ -1,13 +1,18 @@
 {
-  "name": "minecraft-bot",
+  "name": "aternos-bot",
   "version": "1.0.0",
+  "description": "Mineflayer bot for Aternos server with auto login, walking, combat, and anti-idle.",
   "main": "index.js",
   "scripts": {
-    "start": "npm install && node index.js"
+    "start": "node index.js"
   },
   "dependencies": {
-    "mineflayer": "^4.23.0",
-    "mineflayer-pathfinder": "^2.4.0",
-    "minecraft-data": "^3.79.0"
+    "mineflayer": "^4.20.0",
+    "mineflayer-pathfinder": "^2.5.0",
+    "mineflayer-pvp": "^1.3.0",
+    "mineflayer-auto-eat": "^2.3.0",
+    "mineflayer-collectblock": "^1.2.0",
+    "mineflayer-tool": "^1.2.0",
+    "minecraft-data": "^3.59.0"
   }
 }
