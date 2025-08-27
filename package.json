@@ -1,18 +1,14 @@
 {
-  "name": "aternos-bot",
+  "name": "afkbot_24x7_online",
   "version": "1.0.0",
-  "description": "Mineflayer bot for Aternos server with auto login, walking, combat, and anti-idle.",
+  "description": "A Minecraft AFK bot that stays online 24x7 with a tiny keep-alive web server.",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "mineflayer": "^4.20.0",
-    "mineflayer-pathfinder": "^1.10.0",
-    "mineflayer-pvp": "^1.3.0",
-    "mineflayer-auto-eat": "^2.3.2",
-    "mineflayer-collectblock": "^1.2.0",
-    "mineflayer-tool": "^1.2.0",
-    "minecraft-data": "^3.59.0"
+    "express": "^4.18.2",
+    "mineflayer": "^4.16.0",
+    "mineflayer-pathfinder": "^2.4.0"
   }
 }
